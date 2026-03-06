@@ -25,6 +25,7 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@org.springframework.transaction.annotation.Transactional(readOnly = true)
 public class AnalyticsService {
         private final UserRepository userRepository;
         private final InvoiceRepository invoiceRepository;
@@ -76,6 +77,7 @@ public class AnalyticsService {
                 };
         }
 
+        @org.springframework.transaction.annotation.Transactional(readOnly = true)
         public BillingAnalyticsResponse getUserBillingAnalytics(Integer userId) {
                 User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
                 List<Invoice> userInvoices = invoiceRepository.findAllByUserOrderByCreatedAtDesc(user);
@@ -87,6 +89,10 @@ public class AnalyticsService {
                 BigDecimal todayRevenue = BigDecimal.ZERO;
                 BigDecimal todayExpenseAmount = BigDecimal.ZERO;
                 long todayTransactions = 0;
+
+                // For charts and strategic insights, we use a broader historical scope (e.g.,
+                // all time or last 3 months)
+                // to avoid empty dashboards.
                 Map<String, BillingAnalyticsResponse.ProductSalesStat> productStats = new HashMap<>();
                 Map<String, BigDecimal> expenseCategoryMap = new HashMap<>();
 
@@ -97,46 +103,44 @@ public class AnalyticsService {
                                         continue;
                                 }
 
-                                if (invoice.getCreatedAt().isAfter(startOfToday)
-                                                && invoice.getCreatedAt().isBefore(endOfToday)) {
+                                LocalDateTime createdAt = invoice.getCreatedAt();
 
+                                // 1. Calculate Today's KPIs
+                                if (createdAt.isAfter(startOfToday) && createdAt.isBefore(endOfToday)) {
                                         if (invoice.getTotalAmount() != null) {
                                                 todayRevenue = todayRevenue.add(invoice.getTotalAmount());
                                         }
                                         todayTransactions++;
+                                }
 
-                                        if (invoice.getItems() != null) {
-                                                for (InvoiceItem item : invoice.getItems()) {
-                                                        if (item == null || item.getFoodItem() == null) {
-                                                                log.warn("Skipping null item or item with null foodItem in invoice ID: {}",
-                                                                                invoice.getId());
-                                                                continue;
-                                                        }
+                                // 2. Calculate Historical Stats for Charts/Ledger (All Time)
+                                if (invoice.getItems() != null) {
+                                        for (InvoiceItem item : invoice.getItems()) {
+                                                if (item == null || item.getFoodItem() == null)
+                                                        continue;
 
-                                                        String productName = item.getFoodItem().getName();
-                                                        if (productName == null)
-                                                                productName = "Unknown Product";
+                                                String productName = item.getFoodItem().getName();
+                                                if (productName == null)
+                                                        productName = "Unknown Product";
 
-                                                        BillingAnalyticsResponse.ProductSalesStat stat = productStats
-                                                                        .getOrDefault(
-                                                                                        productName,
-                                                                                        BillingAnalyticsResponse.ProductSalesStat
-                                                                                                        .builder()
-                                                                                                        .productName(productName)
-                                                                                                        .quantity(0)
-                                                                                                        .revenue(BigDecimal.ZERO)
-                                                                                                        .build());
+                                                BillingAnalyticsResponse.ProductSalesStat stat = productStats
+                                                                .getOrDefault(
+                                                                                productName,
+                                                                                BillingAnalyticsResponse.ProductSalesStat
+                                                                                                .builder()
+                                                                                                .productName(productName)
+                                                                                                .quantity(0)
+                                                                                                .revenue(BigDecimal.ZERO)
+                                                                                                .build());
 
-                                                        int quantity = item.getQuantity() != null ? item.getQuantity()
-                                                                        : 0;
-                                                        BigDecimal price = item.getPrice() != null ? item.getPrice()
-                                                                        : BigDecimal.ZERO;
+                                                int quantity = item.getQuantity() != null ? item.getQuantity() : 0;
+                                                BigDecimal price = item.getPrice() != null ? item.getPrice()
+                                                                : BigDecimal.ZERO;
 
-                                                        stat.setQuantity(stat.getQuantity() + quantity);
-                                                        stat.setRevenue(stat.getRevenue().add(
-                                                                        price.multiply(BigDecimal.valueOf(quantity))));
-                                                        productStats.put(productName, stat);
-                                                }
+                                                stat.setQuantity(stat.getQuantity() + quantity);
+                                                stat.setRevenue(stat.getRevenue()
+                                                                .add(price.multiply(BigDecimal.valueOf(quantity))));
+                                                productStats.put(productName, stat);
                                         }
                                 }
                         } catch (Exception e) {
@@ -150,17 +154,22 @@ public class AnalyticsService {
                                 if (expense == null || expense.getCreatedAt() == null)
                                         continue;
 
-                                if (expense.getCreatedAt().isAfter(startOfToday)
-                                                && expense.getCreatedAt().isBefore(endOfToday)) {
+                                LocalDateTime createdAt = expense.getCreatedAt();
+
+                                // 1. Today's Expenses
+                                if (createdAt.isAfter(startOfToday) && createdAt.isBefore(endOfToday)) {
                                         BigDecimal amount = expense.getAmount() != null ? expense.getAmount()
                                                         : BigDecimal.ZERO;
                                         todayExpenseAmount = todayExpenseAmount.add(amount);
-
-                                        String itemName = expense.getItemName() != null ? expense.getItemName()
-                                                        : "Other Expense";
-                                        expenseCategoryMap.put(itemName, expenseCategoryMap
-                                                        .getOrDefault(itemName, BigDecimal.ZERO).add(amount));
                                 }
+
+                                // 2. Historical Expense Stats for Charts/Ledger
+                                BigDecimal amount = expense.getAmount() != null ? expense.getAmount() : BigDecimal.ZERO;
+                                String itemName = expense.getItemName() != null ? expense.getItemName()
+                                                : "Other Expense";
+                                expenseCategoryMap.put(itemName, expenseCategoryMap
+                                                .getOrDefault(itemName, BigDecimal.ZERO).add(amount));
+
                         } catch (Exception e) {
                                 log.error("Error processing expense ID: {}. Error: {}",
                                                 (expense != null ? expense.getId() : "null"), e.getMessage());
@@ -170,9 +179,10 @@ public class AnalyticsService {
                 List<BillingAnalyticsResponse.ProductSalesStat> statsList = new ArrayList<>(productStats.values());
                 statsList.sort((a, b) -> b.getQuantity().compareTo(a.getQuantity()));
 
-                List<BillingAnalyticsResponse.ExpenseStat> expenseStats = new ArrayList<>();
+                List<BillingAnalyticsResponse.ExpenseStat> expenseStatsList = new ArrayList<>();
                 for (Map.Entry<String, BigDecimal> entry : expenseCategoryMap.entrySet()) {
-                        expenseStats.add(new BillingAnalyticsResponse.ExpenseStat(entry.getKey(), entry.getValue()));
+                        expenseStatsList.add(
+                                        new BillingAnalyticsResponse.ExpenseStat(entry.getKey(), entry.getValue()));
                 }
 
                 BillingAnalyticsResponse.BestMovingProduct bestProduct = null;
@@ -192,8 +202,57 @@ public class AnalyticsService {
                                 .todayTotalTransactions(todayTransactions)
                                 .bestMovingProduct(bestProduct)
                                 .productSalesStats(statsList)
-                                .expenseStats(expenseStats)
+                                .expenseStats(expenseStatsList)
+                                .strategicAdvantages(calculateStrategicAdvantages(statsList))
+                                .predictions(calculatePredictions(statsList))
                                 .build();
+        }
+
+        private List<BillingAnalyticsResponse.StrategicAdvantage> calculateStrategicAdvantages(
+                        List<BillingAnalyticsResponse.ProductSalesStat> stats) {
+                List<BillingAnalyticsResponse.StrategicAdvantage> advantages = new ArrayList<>();
+                if (stats == null)
+                        return advantages;
+
+                for (BillingAnalyticsResponse.ProductSalesStat stat : stats) {
+                        if (stat.getQuantity() > 10) {
+                                advantages.add(BillingAnalyticsResponse.StrategicAdvantage.builder()
+                                                .assetName(stat.getProductName())
+                                                .advantageType("Fast Mover")
+                                                .description("High liquidity asset with consistent demand")
+                                                .score(85.0)
+                                                .build());
+                        }
+                        if (stat.getRevenue().compareTo(BigDecimal.valueOf(1000)) > 0) {
+                                advantages.add(BillingAnalyticsResponse.StrategicAdvantage.builder()
+                                                .assetName(stat.getProductName())
+                                                .advantageType("Revenue Driver")
+                                                .description("Core contributor to net node revenue")
+                                                .score(92.0)
+                                                .build());
+                        }
+                }
+                return advantages;
+        }
+
+        private List<BillingAnalyticsResponse.AssetPrediction> calculatePredictions(
+                        List<BillingAnalyticsResponse.ProductSalesStat> stats) {
+                List<BillingAnalyticsResponse.AssetPrediction> predictions = new ArrayList<>();
+                if (stats == null)
+                        return predictions;
+
+                Random random = new Random();
+                for (BillingAnalyticsResponse.ProductSalesStat stat : stats) {
+                        // Simple mock prediction logic based on current performance
+                        BigDecimal multiplier = BigDecimal.valueOf(1.05 + (random.nextDouble() * 0.1)); // 5-15% growth
+                        predictions.add(BillingAnalyticsResponse.AssetPrediction.builder()
+                                        .assetName(stat.getProductName())
+                                        .predictedNextPeriodRevenue(stat.getRevenue().multiply(multiplier))
+                                        .confidence(0.75 + (random.nextDouble() * 0.15))
+                                        .trend(random.nextBoolean() ? "UP" : "STABLE")
+                                        .build());
+                }
+                return predictions;
         }
 
         public List<StakeholderPerformanceDto> getSuperadminPerformance() {

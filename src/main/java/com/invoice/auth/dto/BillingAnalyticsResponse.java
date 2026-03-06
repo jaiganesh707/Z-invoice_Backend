@@ -20,6 +20,32 @@ public class BillingAnalyticsResponse implements Serializable {
     private BestMovingProduct bestMovingProduct;
     private List<ProductSalesStat> productSalesStats;
     private List<ExpenseStat> expenseStats;
+    private List<StrategicAdvantage> strategicAdvantages;
+    private List<AssetPrediction> predictions;
+
+    @Getter
+    @Setter
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class StrategicAdvantage implements Serializable {
+        private String assetName;
+        private String advantageType; // e.g., "High Margin", "Fast Mover", "Growth Leader"
+        private String description;
+        private Double score; // 0-100
+    }
+
+    @Getter
+    @Setter
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AssetPrediction implements Serializable {
+        private String assetName;
+        private BigDecimal predictedNextPeriodRevenue;
+        private Double confidence; // 0.0 - 1.0
+        private String trend; // "UP", "DOWN", "STABLE"
+    }
 
     @Getter
     @Setter

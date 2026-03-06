@@ -72,17 +72,21 @@ public class InvoiceService {
         return invoiceRepository.save(invoice);
     }
 
-    @SuppressWarnings("null")
-    public List<Invoice> getInvoicesByUser(Integer userId) {
+    public List<Invoice> getAllInvoices() {
+        return invoiceRepository.findAllByOrderByCreatedAtDesc();
+    }
+
+    @Transactional(readOnly = true)
+    public List<Invoice> getInvoicesByUser(Integer userId, java.time.LocalDateTime start, java.time.LocalDateTime end) {
         if (userId == null) {
             throw new IllegalArgumentException("User ID must not be null");
         }
-        User user = userRepository.findById(userId)
+        User user = userRepository.findById((int) userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
-        return invoiceRepository.findAllByUserOrderByCreatedAtDesc(user);
-    }
 
-    public List<Invoice> getAllInvoices() {
-        return invoiceRepository.findAllByOrderByCreatedAtDesc();
+        if (start != null && end != null) {
+            return invoiceRepository.findAllByUserAndCreatedAtBetweenOrderByCreatedAtDesc(user, start, end);
+        }
+        return invoiceRepository.findAllByUserOrderByCreatedAtDesc(user);
     }
 }

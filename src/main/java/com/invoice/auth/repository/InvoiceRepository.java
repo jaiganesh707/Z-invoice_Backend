@@ -10,9 +10,13 @@ import java.util.List;
 
 @Repository
 public interface InvoiceRepository extends CrudRepository<Invoice, Integer> {
-    @EntityGraph(attributePaths = { "items" })
+    @EntityGraph(attributePaths = { "items", "items.foodItem", "user" })
     List<Invoice> findAllByUserOrderByCreatedAtDesc(User user);
 
-    @EntityGraph(attributePaths = { "items" })
+    @EntityGraph(attributePaths = { "items", "items.foodItem", "user" })
+    List<Invoice> findAllByUserAndCreatedAtBetweenOrderByCreatedAtDesc(User user, java.time.LocalDateTime start,
+            java.time.LocalDateTime end);
+
+    @EntityGraph(attributePaths = { "items", "items.foodItem", "user" })
     List<Invoice> findAllByOrderByCreatedAtDesc();
 }
