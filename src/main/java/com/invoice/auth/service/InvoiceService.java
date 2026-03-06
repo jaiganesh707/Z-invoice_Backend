@@ -72,8 +72,15 @@ public class InvoiceService {
         return invoiceRepository.save(invoice);
     }
 
+    @Transactional(readOnly = true)
     public List<Invoice> getAllInvoices() {
-        return invoiceRepository.findAllByOrderByCreatedAtDesc();
+        List<Invoice> invoices = invoiceRepository.findAllByOrderByCreatedAtDesc();
+        // Force initialization for JSON serialization outside transaction
+        invoices.forEach(i -> {
+            if (i.getItems() != null)
+                i.getItems().size();
+        });
+        return invoices;
     }
 
     @Transactional(readOnly = true)
@@ -84,9 +91,25 @@ public class InvoiceService {
         User user = userRepository.findById((int) userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
 
+        List<Invoice> invoices;
         if (start != null && end != null) {
-            return invoiceRepository.findAllByUserAndCreatedAtBetweenOrderByCreatedAtDesc(user, start, end);
+            invoices = invoiceRepository.findAllByUserAndCreatedAtBetweenOrderByCreatedAtDesc(user, start, end);
+        } else {
+            invoices = invoiceRepository.findAllByUserOrderByCreatedAtDesc(user);
         }
-        return invoiceRepository.findAllByUserOrderByCreatedAtDesc(user);
+
+        // Force initialization for JSON serialization outside transaction
+        invoices.forEach(i -> {
+            if (i.getItems() != null) {
+                i.getItems().size();
+                i.getItems().forEach(item -> {
+                    if (item.getFoodItem() != null) {
+                        item.getFoodItem().getName(); // Touch the food item too
+                    }
+                });
+            }
+        });
+
+        return invoices;
     }
 }

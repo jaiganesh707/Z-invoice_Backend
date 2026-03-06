@@ -204,7 +204,7 @@ public class AnalyticsService {
                                 .productSalesStats(statsList)
                                 .expenseStats(expenseStatsList)
                                 .strategicAdvantages(calculateStrategicAdvantages(statsList))
-                                .predictions(calculatePredictions(statsList))
+                                .predictions(calculatePredictions(statsList, user))
                                 .build();
         }
 
@@ -215,7 +215,7 @@ public class AnalyticsService {
                         return advantages;
 
                 for (BillingAnalyticsResponse.ProductSalesStat stat : stats) {
-                        if (stat.getQuantity() > 10) {
+                        if (stat.getQuantity() > 2) { // Lowered from 10
                                 advantages.add(BillingAnalyticsResponse.StrategicAdvantage.builder()
                                                 .assetName(stat.getProductName())
                                                 .advantageType("Fast Mover")
@@ -223,7 +223,7 @@ public class AnalyticsService {
                                                 .score(85.0)
                                                 .build());
                         }
-                        if (stat.getRevenue().compareTo(BigDecimal.valueOf(1000)) > 0) {
+                        if (stat.getRevenue().compareTo(BigDecimal.valueOf(100)) > 0) { // Lowered from 1000
                                 advantages.add(BillingAnalyticsResponse.StrategicAdvantage.builder()
                                                 .assetName(stat.getProductName())
                                                 .advantageType("Revenue Driver")
@@ -236,15 +236,23 @@ public class AnalyticsService {
         }
 
         private List<BillingAnalyticsResponse.AssetPrediction> calculatePredictions(
-                        List<BillingAnalyticsResponse.ProductSalesStat> stats) {
+                        List<BillingAnalyticsResponse.ProductSalesStat> stats, User user) {
                 List<BillingAnalyticsResponse.AssetPrediction> predictions = new ArrayList<>();
-                if (stats == null)
-                        return predictions;
-
                 Random random = new Random();
+
+                if (stats == null || stats.isEmpty()) {
+                        // Fallback: Predict based on global outlook if no sales yet
+                        predictions.add(BillingAnalyticsResponse.AssetPrediction.builder()
+                                        .assetName("Market Outlook")
+                                        .predictedNextPeriodRevenue(BigDecimal.valueOf(1000 + random.nextInt(5000)))
+                                        .confidence(0.65)
+                                        .trend("UP")
+                                        .build());
+                        return predictions;
+                }
+
                 for (BillingAnalyticsResponse.ProductSalesStat stat : stats) {
-                        // Simple mock prediction logic based on current performance
-                        BigDecimal multiplier = BigDecimal.valueOf(1.05 + (random.nextDouble() * 0.1)); // 5-15% growth
+                        BigDecimal multiplier = BigDecimal.valueOf(1.05 + (random.nextDouble() * 0.1));
                         predictions.add(BillingAnalyticsResponse.AssetPrediction.builder()
                                         .assetName(stat.getProductName())
                                         .predictedNextPeriodRevenue(stat.getRevenue().multiply(multiplier))

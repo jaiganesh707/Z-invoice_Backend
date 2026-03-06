@@ -28,7 +28,7 @@ public class Invoice {
     @Column(nullable = false)
     private BigDecimal totalAmount;
 
-    @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<InvoiceItem> items;
 
     @CreationTimestamp
