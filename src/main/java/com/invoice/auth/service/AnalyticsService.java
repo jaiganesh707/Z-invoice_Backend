@@ -80,8 +80,6 @@ public class AnalyticsService {
         @org.springframework.transaction.annotation.Transactional(readOnly = true)
         public BillingAnalyticsResponse getUserBillingAnalytics(Integer userId) {
                 User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
-                List<Invoice> userInvoices = invoiceRepository.findAllByUserOrderByCreatedAtDesc(user);
-                List<Expense> userExpenses = expenseRepository.findAllByUserOrderByCreatedAtDesc(user);
 
                 LocalDateTime startOfToday = LocalDateTime.of(LocalDate.now(), LocalTime.MIN);
                 LocalDateTime endOfToday = LocalDateTime.of(LocalDate.now(), LocalTime.MAX);
@@ -90,99 +88,42 @@ public class AnalyticsService {
                 BigDecimal todayExpenseAmount = BigDecimal.ZERO;
                 long todayTransactions = 0;
 
-                // For charts and strategic insights, we use a broader historical scope (e.g.,
-                // all time or last 3 months)
-                // to avoid empty dashboards.
-                Map<String, BillingAnalyticsResponse.ProductSalesStat> productStats = new HashMap<>();
-                Map<String, BigDecimal> expenseCategoryMap = new HashMap<>();
-
-                for (Invoice invoice : userInvoices) {
-                        try {
-                                if (invoice == null || invoice.getCreatedAt() == null) {
-                                        log.warn("Skipping null invoice or invoice with null createdAt: {}", invoice);
-                                        continue;
-                                }
-
-                                LocalDateTime createdAt = invoice.getCreatedAt();
-
-                                // 1. Calculate Today's KPIs
-                                if (createdAt.isAfter(startOfToday) && createdAt.isBefore(endOfToday)) {
-                                        if (invoice.getTotalAmount() != null) {
-                                                todayRevenue = todayRevenue.add(invoice.getTotalAmount());
-                                        }
-                                        todayTransactions++;
-                                }
-
-                                // 2. Calculate Historical Stats for Charts/Ledger (All Time)
-                                if (invoice.getItems() != null) {
-                                        for (InvoiceItem item : invoice.getItems()) {
-                                                if (item == null || item.getFoodItem() == null)
-                                                        continue;
-
-                                                String productName = item.getFoodItem().getName();
-                                                if (productName == null)
-                                                        productName = "Unknown Product";
-
-                                                BillingAnalyticsResponse.ProductSalesStat stat = productStats
-                                                                .getOrDefault(
-                                                                                productName,
-                                                                                BillingAnalyticsResponse.ProductSalesStat
-                                                                                                .builder()
-                                                                                                .productName(productName)
-                                                                                                .quantity(0)
-                                                                                                .revenue(BigDecimal.ZERO)
-                                                                                                .build());
-
-                                                int quantity = item.getQuantity() != null ? item.getQuantity() : 0;
-                                                BigDecimal price = item.getPrice() != null ? item.getPrice()
-                                                                : BigDecimal.ZERO;
-
-                                                stat.setQuantity(stat.getQuantity() + quantity);
-                                                stat.setRevenue(stat.getRevenue()
-                                                                .add(price.multiply(BigDecimal.valueOf(quantity))));
-                                                productStats.put(productName, stat);
-                                        }
-                                }
-                        } catch (Exception e) {
-                                log.error("Error processing invoice ID: {}. Error: {}",
-                                                (invoice != null ? invoice.getId() : "null"), e.getMessage());
+                // 1. Get Today's Stats via efficient aggregate queries
+                List<Object[]> revenueStats = invoiceRepository.getUserRevenueStats(startOfToday, endOfToday);
+                for (Object[] row : revenueStats) {
+                        if (row[0].equals(userId)) {
+                                todayTransactions = (Long) row[1];
+                                todayRevenue = (BigDecimal) row[2];
+                                break;
                         }
                 }
 
-                for (Expense expense : userExpenses) {
-                        try {
-                                if (expense == null || expense.getCreatedAt() == null)
-                                        continue;
-
-                                LocalDateTime createdAt = expense.getCreatedAt();
-
-                                // 1. Today's Expenses
-                                if (createdAt.isAfter(startOfToday) && createdAt.isBefore(endOfToday)) {
-                                        BigDecimal amount = expense.getAmount() != null ? expense.getAmount()
-                                                        : BigDecimal.ZERO;
-                                        todayExpenseAmount = todayExpenseAmount.add(amount);
-                                }
-
-                                // 2. Historical Expense Stats for Charts/Ledger
-                                BigDecimal amount = expense.getAmount() != null ? expense.getAmount() : BigDecimal.ZERO;
-                                String itemName = expense.getItemName() != null ? expense.getItemName()
-                                                : "Other Expense";
-                                expenseCategoryMap.put(itemName, expenseCategoryMap
-                                                .getOrDefault(itemName, BigDecimal.ZERO).add(amount));
-
-                        } catch (Exception e) {
-                                log.error("Error processing expense ID: {}. Error: {}",
-                                                (expense != null ? expense.getId() : "null"), e.getMessage());
+                List<Object[]> expenseStatsToday = expenseRepository.getUserExpenseStats(startOfToday, endOfToday);
+                for (Object[] row : expenseStatsToday) {
+                        if (row[0].equals(userId)) {
+                                todayExpenseAmount = (BigDecimal) row[1];
+                                break;
                         }
                 }
 
-                List<BillingAnalyticsResponse.ProductSalesStat> statsList = new ArrayList<>(productStats.values());
+                // 2. Get Historical Product Stats via aggregation
+                List<BillingAnalyticsResponse.ProductSalesStat> statsList = new ArrayList<>();
+                List<Object[]> productStatsRows = invoiceRepository.getProductSalesStats(user);
+                for (Object[] row : productStatsRows) {
+                        statsList.add(BillingAnalyticsResponse.ProductSalesStat.builder()
+                                        .productName((String) row[0])
+                                        .quantity(((Long) row[1]).intValue())
+                                        .revenue((BigDecimal) row[2])
+                                        .build());
+                }
                 statsList.sort((a, b) -> b.getQuantity().compareTo(a.getQuantity()));
 
+                // 3. Get Historical Expense Category Stats via aggregation
                 List<BillingAnalyticsResponse.ExpenseStat> expenseStatsList = new ArrayList<>();
-                for (Map.Entry<String, BigDecimal> entry : expenseCategoryMap.entrySet()) {
+                List<Object[]> categoryStatsRows = expenseRepository.getExpenseCategoryStats(user);
+                for (Object[] row : categoryStatsRows) {
                         expenseStatsList.add(
-                                        new BillingAnalyticsResponse.ExpenseStat(entry.getKey(), entry.getValue()));
+                                        new BillingAnalyticsResponse.ExpenseStat((String) row[0], (BigDecimal) row[1]));
                 }
 
                 BillingAnalyticsResponse.BestMovingProduct bestProduct = null;
@@ -196,9 +137,11 @@ public class AnalyticsService {
                 }
 
                 return BillingAnalyticsResponse.builder()
-                                .todayRevenue(todayRevenue)
-                                .todayExpense(todayExpenseAmount)
-                                .todayProfit(todayRevenue.subtract(todayExpenseAmount))
+                                .todayRevenue(todayRevenue != null ? todayRevenue : BigDecimal.ZERO)
+                                .todayExpense(todayExpenseAmount != null ? todayExpenseAmount : BigDecimal.ZERO)
+                                .todayProfit((todayRevenue != null ? todayRevenue : BigDecimal.ZERO)
+                                                .subtract(todayExpenseAmount != null ? todayExpenseAmount
+                                                                : BigDecimal.ZERO))
                                 .todayTotalTransactions(todayTransactions)
                                 .bestMovingProduct(bestProduct)
                                 .productSalesStats(statsList)
@@ -264,46 +207,45 @@ public class AnalyticsService {
         }
 
         public List<StakeholderPerformanceDto> getSuperadminPerformance() {
-                Iterable<User> usersIterable = userRepository.findAll();
-                List<StakeholderPerformanceDto> performanceResults = new ArrayList<>();
-
                 LocalDateTime startOfToday = LocalDateTime.of(LocalDate.now(), LocalTime.MIN);
                 LocalDateTime endOfToday = LocalDateTime.of(LocalDate.now(), LocalTime.MAX);
+
+                // 1. Fetch all revenue stats for today in one query
+                Map<Integer, Object[]> revenueMap = new HashMap<>();
+                List<Object[]> revenueRows = invoiceRepository.getUserRevenueStats(startOfToday, endOfToday);
+                for (Object[] row : revenueRows) {
+                        revenueMap.put((Integer) row[0], row);
+                }
+
+                // 2. Fetch all expense stats for today in one query
+                Map<Integer, BigDecimal> expenseMap = new HashMap<>();
+                List<Object[]> expenseRows = expenseRepository.getUserExpenseStats(startOfToday, endOfToday);
+                for (Object[] row : expenseRows) {
+                        expenseMap.put((Integer) row[0], (BigDecimal) row[1]);
+                }
+
+                // 3. Get all users and build response list
+                Iterable<User> usersIterable = userRepository.findAll();
+                List<StakeholderPerformanceDto> performanceResults = new ArrayList<>();
 
                 for (User user : usersIterable) {
                         if (user.getRole() == RoleEnum.ROLE_SUPER_ADMIN)
                                 continue;
 
-                        BigDecimal rev = BigDecimal.ZERO;
-                        BigDecimal exp = BigDecimal.ZERO;
-                        long trans = 0;
+                        Object[] revStat = revenueMap.get(user.getId());
+                        long transactions = revStat != null ? (Long) revStat[1] : 0;
+                        BigDecimal revenue = revStat != null ? (BigDecimal) revStat[2] : BigDecimal.ZERO;
 
-                        List<Invoice> invoices = invoiceRepository.findAllByUserOrderByCreatedAtDesc(user);
-                        for (Invoice inv : invoices) {
-                                if (inv.getCreatedAt() != null && inv.getCreatedAt().isAfter(startOfToday)
-                                                && inv.getCreatedAt().isBefore(endOfToday)) {
-                                        if (inv.getTotalAmount() != null)
-                                                rev = rev.add(inv.getTotalAmount());
-                                        trans++;
-                                }
-                        }
-
-                        List<Expense> expenses = expenseRepository.findAllByUserOrderByCreatedAtDesc(user);
-                        for (Expense e : expenses) {
-                                if (e.getCreatedAt() != null && e.getCreatedAt().isAfter(startOfToday)
-                                                && e.getCreatedAt().isBefore(endOfToday)) {
-                                        if (e.getAmount() != null)
-                                                exp = exp.add(e.getAmount());
-                                }
-                        }
+                        BigDecimal expense = expenseMap.getOrDefault(user.getId(), BigDecimal.ZERO);
 
                         performanceResults.add(StakeholderPerformanceDto.builder()
                                         .userId(user.getId())
                                         .username(user.getUsername())
-                                        .revenue(rev)
-                                        .expense(exp)
-                                        .profit(rev.subtract(exp))
-                                        .transactions(trans)
+                                        .revenue(revenue != null ? revenue : BigDecimal.ZERO)
+                                        .expense(expense != null ? expense : BigDecimal.ZERO)
+                                        .profit((revenue != null ? revenue : BigDecimal.ZERO)
+                                                        .subtract(expense != null ? expense : BigDecimal.ZERO))
+                                        .transactions(transactions)
                                         .build());
                 }
 
