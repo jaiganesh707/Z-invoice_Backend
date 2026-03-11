@@ -38,9 +38,12 @@ public class FoodItemController {
 
         // If a specific userId is requested, enforce access controls
         if (userId != null) {
-            // Super Admin can view any user's items, others can only view THEIR OWN items
-            if (requester.getRole() != com.invoice.auth.entity.RoleEnum.ROLE_SUPER_ADMIN
-                    && !requester.getId().equals(userId)) {
+            // Super Admin or Admin can view any user's items, others can only view THEIR
+            // OWN items
+            boolean isElevated = requester.getRole() == com.invoice.auth.entity.RoleEnum.ROLE_SUPER_ADMIN
+                    || requester.getRole() == com.invoice.auth.entity.RoleEnum.ROLE_ADMIN;
+
+            if (!isElevated && !requester.getId().equals(userId)) {
                 throw new org.springframework.security.access.AccessDeniedException(
                         "Access denied: You can only view your own items");
             }
@@ -58,8 +61,9 @@ public class FoodItemController {
             return ResponseEntity.ok(items.stream().map(this::mapToDto).collect(Collectors.toList()));
         }
 
-        // If Super Admin and no userId, return ALL system items
-        if (requester.getRole() == com.invoice.auth.entity.RoleEnum.ROLE_SUPER_ADMIN) {
+        // If Elevated and no userId, return ALL system items
+        if (requester.getRole() == com.invoice.auth.entity.RoleEnum.ROLE_SUPER_ADMIN
+                || requester.getRole() == com.invoice.auth.entity.RoleEnum.ROLE_ADMIN) {
             return ResponseEntity.ok(foodItemService.allFoodItems().stream()
                     .map(this::mapToDto).collect(Collectors.toList()));
         }
@@ -89,7 +93,10 @@ public class FoodItemController {
             @AuthenticationPrincipal User requester) {
         User targetUser = requester;
 
-        if (userId != null && requester.getRole() == com.invoice.auth.entity.RoleEnum.ROLE_SUPER_ADMIN) {
+        boolean isElevated = requester.getRole() == com.invoice.auth.entity.RoleEnum.ROLE_SUPER_ADMIN
+                || requester.getRole() == com.invoice.auth.entity.RoleEnum.ROLE_ADMIN;
+
+        if (userId != null && isElevated) {
             targetUser = authenticationService.findById(userId)
                     .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
         }
@@ -106,8 +113,10 @@ public class FoodItemController {
         FoodItem foodItem = foodItemService.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Food item not found with id: " + id));
 
-        if (requester.getRole() != com.invoice.auth.entity.RoleEnum.ROLE_SUPER_ADMIN &&
-                !foodItem.getUser().getId().equals(requester.getId())) {
+        boolean isElevated = requester.getRole() == com.invoice.auth.entity.RoleEnum.ROLE_SUPER_ADMIN
+                || requester.getRole() == com.invoice.auth.entity.RoleEnum.ROLE_ADMIN;
+
+        if (!isElevated && !foodItem.getUser().getId().equals(requester.getId())) {
             throw new RuntimeException("Access denied: You can only update your own items");
         }
 

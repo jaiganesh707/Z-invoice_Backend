@@ -112,4 +112,13 @@ public class InvoiceService {
 
         return invoices;
     }
+
+    @Transactional
+    @SuppressWarnings("null")
+    public void deleteInvoice(Integer id) {
+        if (!invoiceRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Invoice not found with id: " + id);
+        }
+        invoiceRepository.deleteById(id);
+    }
 }

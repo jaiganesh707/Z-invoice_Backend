@@ -42,7 +42,7 @@ public class UserController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or #id == #requester.id")
+    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('ADMIN') or #id.equals(#requester.id)")
     public ResponseEntity<User> getUserById(@PathVariable Integer id, @AuthenticationPrincipal User requester) {
         log.info("Fetching user with id: {}", id);
         return authenticationService.findById(id)
@@ -57,7 +57,7 @@ public class UserController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('ADMIN')")
     public ResponseEntity<User> createUser(@Valid @RequestBody RegisterUserDto registerUserDto) {
         registerUserDto.setRole(RoleEnum.ROLE_USER);
         User createdUser = authenticationService.signup(registerUserDto);
@@ -76,20 +76,20 @@ public class UserController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('ADMIN')")
     public ResponseEntity<User> updateUser(@PathVariable Integer id, @RequestBody RegisterUserDto updateDto) {
         return ResponseEntity.ok(authenticationService.updateFullUser(id, updateDto));
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('ADMIN')")
     public ResponseEntity<Void> deleteUser(@PathVariable Integer id) {
         authenticationService.deleteUser(id);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/image")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('ADMIN')")
     public ResponseEntity<User> uploadImage(
             @PathVariable Integer id,
             @RequestParam("file") MultipartFile file) {

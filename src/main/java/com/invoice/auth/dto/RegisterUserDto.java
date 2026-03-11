@@ -16,4 +16,7 @@ public class RegisterUserDto {
     private String username;
     private String contactNumber;
     private RoleEnum role;
+    private String upiId;
+    private String payeeName;
+    private String currency;
 }

@@ -15,7 +15,7 @@ import java.util.List;
 public class RoleController {
 
     @GetMapping
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('ADMIN')")
     public ResponseEntity<List<RoleEnum>> allRoles() {
         return ResponseEntity.ok(Arrays.asList(RoleEnum.values()));
     }

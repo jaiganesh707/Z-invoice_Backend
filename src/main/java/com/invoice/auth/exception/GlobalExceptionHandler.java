@@ -12,6 +12,9 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import java.time.LocalDateTime;
 import java.util.stream.Collectors;
 
@@ -102,9 +105,9 @@ public class GlobalExceptionHandler {
                 return new ResponseEntity<>(errorDetails, HttpStatus.BAD_REQUEST);
         }
 
-        @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+        @ExceptionHandler(DataIntegrityViolationException.class)
         public ResponseEntity<ErrorResponse> handleDataIntegrityViolationException(
-                        org.springframework.dao.DataIntegrityViolationException ex, WebRequest request) {
+                        DataIntegrityViolationException ex, WebRequest request) {
                 ErrorResponse errorDetails = ErrorResponse.builder()
                                 .timestamp(LocalDateTime.now())
                                 .status(HttpStatus.CONFLICT.value())
@@ -113,6 +116,32 @@ public class GlobalExceptionHandler {
                                 .path(request.getDescription(false))
                                 .build();
                 return new ResponseEntity<>(errorDetails, HttpStatus.CONFLICT);
+        }
+
+        @ExceptionHandler(MaxUploadSizeExceededException.class)
+        public ResponseEntity<ErrorResponse> handleMaxSizeException(
+                        MaxUploadSizeExceededException ex, WebRequest request) {
+                ErrorResponse errorDetails = ErrorResponse.builder()
+                                .timestamp(LocalDateTime.now())
+                                .status(HttpStatus.PAYLOAD_TOO_LARGE.value())
+                                .error("Payload Too Large")
+                                .message("The uploaded file exceeds the maximum allowed size.")
+                                .path(request.getDescription(false))
+                                .build();
+                return new ResponseEntity<>(errorDetails, HttpStatus.PAYLOAD_TOO_LARGE);
+        }
+
+        @ExceptionHandler(NoResourceFoundException.class)
+        public ResponseEntity<ErrorResponse> handleNoResourceFoundException(
+                        NoResourceFoundException ex, WebRequest request) {
+                ErrorResponse errorDetails = ErrorResponse.builder()
+                                .timestamp(LocalDateTime.now())
+                                .status(HttpStatus.NOT_FOUND.value())
+                                .error("Not Found")
+                                .message("The requested endpoint was not found: " + ex.getResourcePath())
+                                .path(request.getDescription(false))
+                                .build();
+                return new ResponseEntity<>(errorDetails, HttpStatus.NOT_FOUND);
         }
 
         @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
@@ -133,7 +162,7 @@ public class GlobalExceptionHandler {
 
         @ExceptionHandler(Exception.class)
         public ResponseEntity<ErrorResponse> globalExceptionHandler(Exception ex, WebRequest request) {
-                log.error("Unexpected error occurred: {}", ex.getMessage(), ex);
+                log.error("Unexpected error occurred: {} - Class: {}", ex.getMessage(), ex.getClass().getName(), ex);
                 ErrorResponse errorDetails = ErrorResponse.builder()
                                 .timestamp(LocalDateTime.now())
                                 .status(HttpStatus.INTERNAL_SERVER_ERROR.value())

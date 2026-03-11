@@ -38,6 +38,9 @@ public class AuthenticationService {
                 .password(passwordEncoder.encode(input.getPassword()))
                 .contactNumber(input.getContactNumber())
                 .role(input.getRole() != null ? input.getRole() : RoleEnum.ROLE_USER)
+                .upiId(input.getUpiId())
+                .payeeName(input.getPayeeName())
+                .currency(input.getCurrency() != null ? input.getCurrency() : "INR")
                 .build();
 
         return userRepository.save(user);
@@ -98,6 +101,9 @@ public class AuthenticationService {
         if (input.getRole() != null) {
             user.setRole(input.getRole());
         }
+        user.setUpiId(input.getUpiId());
+        user.setPayeeName(input.getPayeeName());
+        user.setCurrency(input.getCurrency() != null ? input.getCurrency() : "INR");
 
         return userRepository.save(user);
     }

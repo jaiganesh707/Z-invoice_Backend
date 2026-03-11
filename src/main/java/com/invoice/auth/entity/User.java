@@ -51,6 +51,15 @@ public class User implements UserDetails {
     @Column(length = 20)
     private String contactNumber;
 
+    @Column(length = 100)
+    private String upiId;
+
+    @Column(length = 100)
+    private String payeeName;
+
+    @Column(length = 10)
+    private String currency;
+
     @CreationTimestamp
     @Column(updatable = false, name = "created_at")
     private LocalDateTime createdAt;
