@@ -26,6 +26,7 @@ public class DataSeeder implements ApplicationListener<ContextRefreshedEvent> {
     @Override
     public void onApplicationEvent(@NonNull ContextRefreshedEvent event) {
         this.createSuperAdmin();
+        this.createPrimeUser();
         this.migrateLegacyRoles();
         this.seedFoodItems();
     }
@@ -50,6 +51,26 @@ public class DataSeeder implements ApplicationListener<ContextRefreshedEvent> {
                     .password(passwordEncoder.encode("123456"))
                     .role(RoleEnum.ROLE_SUPER_ADMIN)
                     .uniqueCode("USR-ADMIN-01")
+                    .build();
+
+            userRepository.save(user);
+        }
+    }
+
+    @SuppressWarnings("null")
+    private void createPrimeUser() {
+        Optional<User> optionalUser = userRepository.findByEmail("prime@galaxy.com");
+
+        if (optionalUser.isEmpty()) {
+            User user = User.builder()
+                    .username("primeboss")
+                    .email("prime@galaxy.com")
+                    .password(passwordEncoder.encode("password"))
+                    .role(RoleEnum.ROLE_PRIME_USER)
+                    .uniqueCode("USR-PRIME-01")
+                    .upiId("prime@oksbi")
+                    .payeeName("Prime Corporation")
+                    .currency("INR")
                     .build();
 
             userRepository.save(user);

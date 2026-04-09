@@ -10,7 +10,12 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-@Table(name = "food_items")
+@Table(name = "food_items", indexes = {
+    @Index(name = "idx_food_user_id", columnList = "user_id"),
+    @Index(name = "idx_food_active", columnList = "is_active"),
+    @Index(name = "idx_food_code", columnList = "uniqueCode"),
+    @Index(name = "idx_food_user_active", columnList = "user_id, is_active")
+})
 @Entity
 @Getter
 @Setter
@@ -43,6 +48,10 @@ public class FoodItem {
     @Lob
     @Column(columnDefinition = "LONGTEXT")
     private String imageUrl;
+
+    @Builder.Default
+    @Column(nullable = false)
+    private Integer availableStocks = 0;
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)

@@ -9,6 +9,7 @@ import java.util.List;
 @Repository
 public interface FoodItemRepository extends CrudRepository<FoodItem, Integer> {
     List<FoodItem> findByUserAndIsActiveTrue(com.invoice.auth.entity.User user);
-
+    List<FoodItem> findAllByUser(com.invoice.auth.entity.User user);
     List<FoodItem> findByIsActiveTrue();
+    java.util.Optional<FoodItem> findByUniqueCode(String uniqueCode);
 }

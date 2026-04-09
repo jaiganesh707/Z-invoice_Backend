@@ -3,9 +3,6 @@ package com.invoice.auth.service;
 import com.invoice.auth.dto.BillingAnalyticsResponse;
 import com.invoice.auth.dto.StakeholderPerformanceDto;
 import com.invoice.auth.dto.UserStatsResponse;
-import com.invoice.auth.entity.Expense;
-import com.invoice.auth.entity.Invoice;
-import com.invoice.auth.entity.InvoiceItem;
 import com.invoice.auth.entity.RoleEnum;
 import com.invoice.auth.entity.User;
 import com.invoice.auth.repository.ExpenseRepository;
@@ -79,6 +76,9 @@ public class AnalyticsService {
 
         @org.springframework.transaction.annotation.Transactional(readOnly = true)
         public BillingAnalyticsResponse getUserBillingAnalytics(Integer userId) {
+                if (userId == null) {
+                    throw new IllegalArgumentException("User ID cannot be null");
+                }
                 User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
 
                 LocalDateTime startOfToday = LocalDateTime.of(LocalDate.now(), LocalTime.MIN);
@@ -206,20 +206,28 @@ public class AnalyticsService {
                 return predictions;
         }
 
-        public List<StakeholderPerformanceDto> getSuperadminPerformance() {
-                LocalDateTime startOfToday = LocalDateTime.of(LocalDate.now(), LocalTime.MIN);
-                LocalDateTime endOfToday = LocalDateTime.of(LocalDate.now(), LocalTime.MAX);
+        public List<StakeholderPerformanceDto> getSuperadminPerformance(String period) {
+                LocalDateTime startDate = LocalDateTime.of(LocalDate.now(), LocalTime.MIN);
+                LocalDateTime endDate = LocalDateTime.of(LocalDate.now(), LocalTime.MAX);
 
-                // 1. Fetch all revenue stats for today in one query
+                if ("month".equalsIgnoreCase(period)) {
+                        startDate = LocalDate.now().withDayOfMonth(1).atStartOfDay();
+                        endDate = LocalDate.now().withDayOfMonth(LocalDate.now().lengthOfMonth()).atTime(23, 59, 59);
+                } else if ("year".equalsIgnoreCase(period)) {
+                        startDate = LocalDate.now().withDayOfYear(1).atStartOfDay();
+                        endDate = LocalDate.now().withDayOfYear(LocalDate.now().lengthOfYear()).atTime(23, 59, 59);
+                }
+
+                // 1. Fetch all revenue stats for period in one query
                 Map<Integer, Object[]> revenueMap = new HashMap<>();
-                List<Object[]> revenueRows = invoiceRepository.getUserRevenueStats(startOfToday, endOfToday);
+                List<Object[]> revenueRows = invoiceRepository.getUserRevenueStats(startDate, endDate);
                 for (Object[] row : revenueRows) {
                         revenueMap.put((Integer) row[0], row);
                 }
 
-                // 2. Fetch all expense stats for today in one query
+                // 2. Fetch all expense stats for period in one query
                 Map<Integer, BigDecimal> expenseMap = new HashMap<>();
-                List<Object[]> expenseRows = expenseRepository.getUserExpenseStats(startOfToday, endOfToday);
+                List<Object[]> expenseRows = expenseRepository.getUserExpenseStats(startDate, endDate);
                 for (Object[] row : expenseRows) {
                         expenseMap.put((Integer) row[0], (BigDecimal) row[1]);
                 }
@@ -229,7 +237,14 @@ public class AnalyticsService {
                 List<StakeholderPerformanceDto> performanceResults = new ArrayList<>();
 
                 for (User user : usersIterable) {
-                        if (user.getRole() == RoleEnum.ROLE_SUPER_ADMIN)
+                        // Analytics for SuperAdmin should only show TOP-LEVEL stakeholders (ROLE_USER).
+                        // Exclude SuperAdmin themselves, Prime Users, Drivers, and any SUB-USERS (Approvers/Workflow Users).
+                        if (user.getRole() == RoleEnum.ROLE_SUPER_ADMIN || 
+                            user.getRole() == RoleEnum.ROLE_PRIME_USER || 
+                            user.getRole() == RoleEnum.ROLE_DRIVER ||
+                            user.getRole() == RoleEnum.ROLE_APPROVER ||
+                            user.getRole() == RoleEnum.ROLE_WORKFLOW_USER ||
+                            user.getParentUser() != null) // If they have a parent, they are sub-users
                                 continue;
 
                         Object[] revStat = revenueMap.get(user.getId());

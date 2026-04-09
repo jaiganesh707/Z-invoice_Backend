@@ -4,6 +4,7 @@ import com.invoice.auth.exception.ResourceNotFoundException;
 
 import com.invoice.auth.entity.FoodItem;
 import com.invoice.auth.repository.FoodItemRepository;
+import org.springframework.security.access.AccessDeniedException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -30,7 +31,39 @@ public class FoodItemService {
         if (input == null || input.getName() == null || input.getPrice() == null || user == null) {
             throw new IllegalArgumentException("Food item name, price, and user must not be null");
         }
+
+        // 1. Check for name match within THIS user's catalog (to re-activate)
+        java.util.List<FoodItem> userItems = foodItemRepository.findAllByUser(user);
+        for (FoodItem item : userItems) {
+            if (input.getName().trim().equalsIgnoreCase(item.getName().trim())) {
+                if (!item.getIsActive()) {
+                    item.setIsActive(true);
+                    item.setPrice(input.getPrice());
+                    item.setDescription(input.getDescription());
+                    item.setImageUrl(input.getImageUrl());
+                    item.setAvailableStocks(input.getAvailableStocks() != null ? input.getAvailableStocks() : 0);
+                    return foodItemRepository.save(item);
+                } else {
+                    throw new RuntimeException("A product with the name '" + input.getName() + "' already exists in your active catalog.");
+                }
+            }
+        }
+
+        // 2. Global Unique Code Safety Check
+        // If the user provided a code, or one is about to be generated, ensure it's not taken globally.
+        if (input.getUniqueCode() != null && !input.getUniqueCode().isEmpty()) {
+            if (foodItemRepository.findByUniqueCode(input.getUniqueCode()).isPresent()) {
+                // Code is taken globally. If this user owns it, we already handled it above via name.
+                // If someone else owns it, we must force a new code for THIS user's item.
+                input.setUniqueCode("ITM-" + java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+            }
+        }
+
+        if (input.getAvailableStocks() == null) {
+            input.setAvailableStocks(0);
+        }
         input.setUser(user);
+        input.setIsActive(true);
         return foodItemRepository.save(input);
     }
 
@@ -50,7 +83,7 @@ public class FoodItemService {
 
         if (currentUser.getRole() != com.invoice.auth.entity.RoleEnum.ROLE_SUPER_ADMIN &&
                 !foodItem.getUser().getId().equals(currentUser.getId())) {
-            throw new RuntimeException("Access denied: You can only delete your own items");
+            throw new AccessDeniedException("Access denied: You can only delete your own items");
         }
 
         foodItem.setIsActive(false);
@@ -65,11 +98,15 @@ public class FoodItemService {
         return foodItemRepository.findById(id).map(foodItem -> {
             if (currentUser.getRole() != com.invoice.auth.entity.RoleEnum.ROLE_SUPER_ADMIN &&
                     !foodItem.getUser().getId().equals(currentUser.getId())) {
-                throw new RuntimeException("Access denied: You can only update your own items");
+                throw new AccessDeniedException("Access denied: You can only update your own items");
             }
             foodItem.setName(input.getName());
             foodItem.setPrice(input.getPrice());
             foodItem.setDescription(input.getDescription());
+            foodItem.setIsActive(true); // Ensure it's active on update
+            if (input.getAvailableStocks() != null) {
+                foodItem.setAvailableStocks(input.getAvailableStocks());
+            }
             return foodItemRepository.save(foodItem);
         }).orElseThrow(() -> new ResourceNotFoundException("Food item not found with id: " + id));
     }

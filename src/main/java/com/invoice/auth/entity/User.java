@@ -13,7 +13,13 @@ import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 
-@Table(name = "users")
+@Table(name = "users", indexes = {
+    @Index(name = "idx_user_email", columnList = "email"),
+    @Index(name = "idx_user_username", columnList = "username"),
+    @Index(name = "idx_user_code", columnList = "uniqueCode"),
+    @Index(name = "idx_user_parent", columnList = "parent_user_id"),
+    @Index(name = "idx_user_role", columnList = "role")
+})
 @Entity
 @Getter
 @Setter
@@ -38,7 +44,7 @@ public class User implements UserDetails {
     private String password;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 50, columnDefinition = "VARCHAR(50)")
     private RoleEnum role;
 
     @Column(unique = true, length = 50, nullable = false)
@@ -59,6 +65,11 @@ public class User implements UserDetails {
 
     @Column(length = 10)
     private String currency;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "parent_user_id")
+    @JsonIgnoreProperties({ "hibernateLazyInitializer", "handler", "password", "authorities" })
+    private User parentUser;
 
     @CreationTimestamp
     @Column(updatable = false, name = "created_at")

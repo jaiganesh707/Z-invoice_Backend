@@ -14,6 +14,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.jpa.JpaSystemException;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import java.time.LocalDateTime;
 import java.util.stream.Collectors;
@@ -108,14 +110,53 @@ public class GlobalExceptionHandler {
         @ExceptionHandler(DataIntegrityViolationException.class)
         public ResponseEntity<ErrorResponse> handleDataIntegrityViolationException(
                         DataIntegrityViolationException ex, WebRequest request) {
+                log.error("Data integrity violation: {}", ex.getMessage());
+                String msg = ex.getMessage() != null && ex.getMessage().toLowerCase().contains("duplicate")
+                    ? "A user with this username or email already exists in the system. Please use a different username or email."
+                    : "Operation failed: This record is currently linked to other documents (Invoices/Orders) and cannot be modified or deleted.";
                 ErrorResponse errorDetails = ErrorResponse.builder()
                                 .timestamp(LocalDateTime.now())
                                 .status(HttpStatus.CONFLICT.value())
-                                .error("Conflict")
-                                .message("Cannot action this item because it is actively referenced by an existing invoice or record.")
+                                .error("Integrity Conflict")
+                                .message(msg)
                                 .path(request.getDescription(false))
                                 .build();
                 return new ResponseEntity<>(errorDetails, HttpStatus.CONFLICT);
+        }
+
+
+        @ExceptionHandler(ConstraintViolationException.class)
+        public ResponseEntity<ErrorResponse> handleConstraintViolation(ConstraintViolationException ex,
+                        WebRequest request) {
+                String message = ex.getConstraintViolations().stream()
+                                .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+                                .collect(Collectors.joining(", "));
+                ErrorResponse errorDetails = ErrorResponse.builder()
+                                .timestamp(LocalDateTime.now())
+                                .status(HttpStatus.BAD_REQUEST.value())
+                                .error("Validation Constraint Failed")
+                                .message(message)
+                                .path(request.getDescription(false))
+                                .build();
+                return new ResponseEntity<>(errorDetails, HttpStatus.BAD_REQUEST);
+        }
+
+        @ExceptionHandler(JpaSystemException.class)
+        public ResponseEntity<ErrorResponse> handleJpaSystemException(JpaSystemException ex, WebRequest request) {
+                log.error("JPA System Error: {}", ex.getMessage());
+                String message = "A database system error occurred. This is often due to data being too long for a column or invalid data types.";
+                if (ex.getMessage() != null && ex.getMessage().contains("Data truncated")) {
+                    message = "Data Input Error: One of the fields entered is too long for the system to process.";
+                }
+                
+                ErrorResponse errorDetails = ErrorResponse.builder()
+                                .timestamp(LocalDateTime.now())
+                                .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
+                                .error("Database System Error")
+                                .message(message)
+                                .path(request.getDescription(false))
+                                .build();
+                return new ResponseEntity<>(errorDetails, HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
         @ExceptionHandler(MaxUploadSizeExceededException.class)

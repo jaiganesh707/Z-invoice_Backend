@@ -38,14 +38,20 @@ public class FoodItemController {
 
         // If a specific userId is requested, enforce access controls
         if (userId != null) {
-            // Super Admin or Admin can view any user's items, others can only view THEIR
-            // OWN items
+            // Super Admin or Admin can view any user's items.
+            // Workflow users (employees) can view their PARENT'S items.
+            // Others can only view THEIR OWN items.
             boolean isElevated = requester.getRole() == com.invoice.auth.entity.RoleEnum.ROLE_SUPER_ADMIN
                     || requester.getRole() == com.invoice.auth.entity.RoleEnum.ROLE_ADMIN;
 
-            if (!isElevated && !requester.getId().equals(userId)) {
+            boolean isParentMatch = false;
+            if (requester.getRole() == com.invoice.auth.entity.RoleEnum.ROLE_WORKFLOW_USER && requester.getParentUser() != null) {
+                isParentMatch = requester.getParentUser().getId().equals(userId);
+            }
+
+            if (!isElevated && !requester.getId().equals(userId) && !isParentMatch) {
                 throw new org.springframework.security.access.AccessDeniedException(
-                        "Access denied: You can only view your own items");
+                        "Access denied: You do not have permission to access the product catalog of user id: " + userId);
             }
 
             Optional<User> userOpt = authenticationService.findById(userId);
@@ -96,7 +102,10 @@ public class FoodItemController {
         boolean isElevated = requester.getRole() == com.invoice.auth.entity.RoleEnum.ROLE_SUPER_ADMIN
                 || requester.getRole() == com.invoice.auth.entity.RoleEnum.ROLE_ADMIN;
 
-        if (userId != null && isElevated) {
+        boolean isWorkerForTarget = requester.getRole() == com.invoice.auth.entity.RoleEnum.ROLE_WORKFLOW_USER 
+                && requester.getParentUser() != null && requester.getParentUser().getId().equals(userId);
+
+        if (userId != null && (isElevated || isWorkerForTarget)) {
             targetUser = authenticationService.findById(userId)
                     .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
         }

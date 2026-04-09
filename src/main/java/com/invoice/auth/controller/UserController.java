@@ -42,7 +42,7 @@ public class UserController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('ADMIN') or #id.equals(#requester.id)")
+    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('ADMIN') or #id.equals(#requester.id) or (#requester.parentUser != null and #id.equals(#requester.parentUser.id))")
     public ResponseEntity<User> getUserById(@PathVariable Integer id, @AuthenticationPrincipal User requester) {
         log.info("Fetching user with id: {}", id);
         return authenticationService.findById(id)
@@ -59,7 +59,9 @@ public class UserController {
     @PostMapping
     @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('ADMIN')")
     public ResponseEntity<User> createUser(@Valid @RequestBody RegisterUserDto registerUserDto) {
-        registerUserDto.setRole(RoleEnum.ROLE_USER);
+        if (registerUserDto.getRole() == null) {
+            registerUserDto.setRole(RoleEnum.ROLE_USER);
+        }
         User createdUser = authenticationService.signup(registerUserDto);
         return ResponseEntity.ok(createdUser);
     }

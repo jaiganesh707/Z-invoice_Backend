@@ -7,7 +7,11 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-@Table(name = "expenses")
+@Table(name = "expenses", indexes = {
+    @Index(name = "idx_expense_user_id", columnList = "user_id"),
+    @Index(name = "idx_expense_created_at", columnList = "created_at"),
+    @Index(name = "idx_expense_item_name", columnList = "itemName")
+})
 @Entity
 @Getter
 @Setter

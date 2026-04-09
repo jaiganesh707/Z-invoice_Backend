@@ -24,7 +24,7 @@ public class AnalyticsController {
     }
 
     @GetMapping("/billing/{userId}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'USER')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'USER', 'PRIME_USER')")
     public ResponseEntity<com.invoice.auth.dto.BillingAnalyticsResponse> getBillingAnalytics(
             @PathVariable Integer userId) {
         return ResponseEntity.ok(analyticsService.getUserBillingAnalytics(userId));
@@ -32,7 +32,8 @@ public class AnalyticsController {
 
     @GetMapping("/performance")
     @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('ADMIN')")
-    public ResponseEntity<List<StakeholderPerformanceDto>> getSuperadminPerformance() {
-        return ResponseEntity.ok(analyticsService.getSuperadminPerformance());
+    public ResponseEntity<List<StakeholderPerformanceDto>> getSuperadminPerformance(
+            @RequestParam(defaultValue = "day") String period) {
+        return ResponseEntity.ok(analyticsService.getSuperadminPerformance(period));
     }
 }
